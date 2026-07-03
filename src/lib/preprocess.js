@@ -38,15 +38,25 @@ export function imageToImageData(image) {
   return { imageData: ctx.getImageData(0, 0, w, h), downscaled };
 }
 
-export function toGrayscale(imageData) {
+// Chroma (max−min channel spread) above which a pixel counts as "colored".
+const CHROMA_THRESHOLD = 40;
+
+export function toGrayscale(imageData, { colorsAsDark = true } = {}) {
   const { data, width, height } = imageData;
   const gray = new Uint8ClampedArray(width * height);
   for (let i = 0, p = 0; i < data.length; i += 4, p++) {
     const a = data[i + 3] / 255;
     // Composite over white so transparent areas read as background.
-    const v =
-      (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]) * a + 255 * (1 - a);
-    gray[p] = v;
+    const r = data[i] * a + 255 * (1 - a);
+    const g = data[i + 1] * a + 255 * (1 - a);
+    const b = data[i + 2] * a + 255 * (1 - a);
+    // Saturated pixels (any hue) are part of the shape, not background —
+    // plain luminance would drop bright colors like green or yellow.
+    if (colorsAsDark && Math.max(r, g, b) - Math.min(r, g, b) >= CHROMA_THRESHOLD) {
+      gray[p] = 0;
+      continue;
+    }
+    gray[p] = 0.299 * r + 0.587 * g + 0.114 * b;
   }
   return gray;
 }
@@ -83,8 +93,11 @@ export function otsuThreshold(gray) {
 
 // Produce a pure black-on-white binary ImageData ready for potrace
 // (potrace traces the dark pixels). Returns the threshold actually used.
-export function binarize(imageData, { threshold = 'auto', invert = false } = {}) {
-  const gray = toGrayscale(imageData);
+export function binarize(
+  imageData,
+  { threshold = 'auto', invert = false, colorsAsDark = true } = {}
+) {
+  const gray = toGrayscale(imageData, { colorsAsDark });
   const t = threshold === 'auto' ? otsuThreshold(gray) : Number(threshold);
 
   const { width, height } = imageData;

@@ -264,6 +264,24 @@ export default function ImportPage({
           </div>
 
           <div className="setting-row">
+            <label htmlFor="colors-as-dark">
+              Colored pixels
+              <span className="setting-hint">count saturated colors as part of the shape</span>
+            </label>
+            <div className="setting-controls">
+              <label className="checkbox">
+                <input
+                  id="colors-as-dark"
+                  type="checkbox"
+                  checked={settings.colorsAsDark}
+                  onChange={(e) => set({ colorsAsDark: e.target.checked })}
+                />
+                Treat as solid
+              </label>
+            </div>
+          </div>
+
+          <div className="setting-row">
             <label htmlFor="invert">
               Invert colors
               <span className="setting-hint">for white shapes on dark backgrounds</span>

@@ -99,8 +99,8 @@ function validateAndClean(rawPaths) {
 }
 
 // `source`: { kind: 'raster', image } or { kind: 'svg', svgText }
-// `settings`: { threshold, invert, turdSize, alphaMax, optTolerance,
-//               targetWidth, targetHeight, unit }
+// `settings`: { threshold, invert, colorsAsDark, turdSize, alphaMax,
+//               optTolerance, targetWidth, targetHeight, unit }
 export async function convert(source, settings) {
   const warnings = [];
   let rawPaths;
@@ -115,6 +115,7 @@ export async function convert(source, settings) {
     const bin = binarize(imageData, {
       threshold: settings.threshold,
       invert: settings.invert,
+      colorsAsDark: settings.colorsAsDark,
     });
     usedThreshold = bin.threshold;
     rawPaths = await traceToPathSegments(bin.imageData, settings);

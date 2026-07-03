@@ -21,7 +21,10 @@ server, no accounts, no uploads leave the machine.
 ## Processing pipeline
 
 1. **Preprocess** — grayscale (alpha composited over white), threshold via
-   Otsu's method or a manual slider, optional invert.
+   Otsu's method or a manual slider, optional invert. Saturated colors (green,
+   red, yellow, …) count as part of the shape by default — plain luminance
+   thresholding would punch bright colors out as holes; a "Colored pixels"
+   toggle restores luminance-only behavior.
 2. **Trace** — [Potrace](https://potrace.sourceforge.net/) via
    [`esm-potrace-wasm`](https://github.com/tomayac/esm-potrace-wasm), with the
    group transform in its output baked into the path coordinates.

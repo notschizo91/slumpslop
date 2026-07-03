@@ -7,6 +7,7 @@ const DEFAULT_SETTINGS = {
   autoThreshold: true,
   threshold: 128,
   invert: false,
+  colorsAsDark: true,
   turdSize: 2,
   alphaMax: 1.0,
   optTolerance: 0.2,
@@ -36,6 +37,7 @@ export default function App() {
       const res = await convert(input, {
         threshold: settings.autoThreshold ? 'auto' : settings.threshold,
         invert: settings.invert,
+        colorsAsDark: settings.colorsAsDark,
         turdSize: settings.turdSize,
         alphaMax: settings.alphaMax,
         optTolerance: settings.optTolerance,
