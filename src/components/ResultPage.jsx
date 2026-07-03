@@ -76,6 +76,19 @@ export default function ResultPage({ source, result, onBack }) {
                 {meta.pathCount} / {meta.nodeCount}
               </dd>
             </div>
+            {meta.colors && (
+              <div>
+                <dt>Colors</dt>
+                <dd className="swatches">
+                  {meta.colors.map((c) => (
+                    <span key={c} className="swatch" title={c}>
+                      <i style={{ background: c }} />
+                      {c}
+                    </span>
+                  ))}
+                </dd>
+              </div>
+            )}
             <div>
               <dt>Validation</dt>
               <dd className={validationOk ? 'ok' : 'warn'}>
@@ -90,10 +103,14 @@ export default function ResultPage({ source, result, onBack }) {
         meta.duplicatesRemoved > 0 ||
         meta.degenerateRemoved > 0 ||
         meta.usedThreshold !== null ||
+        meta.backgroundHex ||
         meta.warnings.length > 0) && (
         <ul className="notes">
           {meta.usedThreshold !== null && (
             <li>Threshold used: {meta.usedThreshold}</li>
+          )}
+          {meta.backgroundHex && (
+            <li>Background color removed: {meta.backgroundHex}</li>
           )}
           {meta.autoClosed > 0 && <li>{meta.autoClosed} open subpath(s) auto-closed</li>}
           {meta.duplicatesRemoved > 0 && (

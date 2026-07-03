@@ -4,6 +4,9 @@ import ResultPage from './components/ResultPage.jsx';
 import { convert } from './lib/pipeline.js';
 
 const DEFAULT_SETTINGS = {
+  colorMode: 'color',
+  maxColors: 8,
+  removeBackground: true,
   autoThreshold: true,
   threshold: 128,
   invert: false,
@@ -35,6 +38,9 @@ export default function App() {
           ? { kind: 'svg', svgText: source.svgText }
           : { kind: 'raster', image: source.image };
       const res = await convert(input, {
+        colorMode: settings.colorMode,
+        maxColors: settings.maxColors,
+        removeBackground: settings.removeBackground,
         threshold: settings.autoThreshold ? 'auto' : settings.threshold,
         invert: settings.invert,
         colorsAsDark: settings.colorsAsDark,

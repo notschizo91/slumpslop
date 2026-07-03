@@ -177,35 +177,96 @@ export default function ImportPage({
       <section className="settings">
         <h2>Trace settings</h2>
 
-        <div className={`setting-group${source?.type === 'svg' ? ' setting-disabled' : ''}`}>
-          <div className="setting-row">
-            <label htmlFor="auto-threshold">
-              Threshold
-              <span className="setting-hint">auto = Otsu&rsquo;s method</span>
-            </label>
-            <div className="setting-controls">
-              <label className="checkbox">
-                <input
-                  id="auto-threshold"
-                  type="checkbox"
-                  checked={settings.autoThreshold}
-                  onChange={(e) => set({ autoThreshold: e.target.checked })}
-                />
-                Auto
-              </label>
-              <input
-                type="range"
-                min="0"
-                max="255"
-                value={settings.threshold}
-                disabled={settings.autoThreshold}
-                onChange={(e) => set({ threshold: Number(e.target.value) })}
-              />
-              <span className="setting-value">
-                {settings.autoThreshold ? 'auto' : settings.threshold}
-              </span>
-            </div>
+        <div className="setting-row">
+          <label htmlFor="color-mode">
+            Color mode
+            <span className="setting-hint">separate paths per color, or one silhouette</span>
+          </label>
+          <div className="setting-controls">
+            <select
+              id="color-mode"
+              value={settings.colorMode}
+              onChange={(e) => set({ colorMode: e.target.value })}
+            >
+              <option value="color">Keep colors</option>
+              <option value="mono">Single-color silhouette</option>
+            </select>
           </div>
+        </div>
+
+        <div className={`setting-group${source?.type === 'svg' ? ' setting-disabled' : ''}`}>
+          {settings.colorMode === 'color' && (
+            <>
+              <div className="setting-row">
+                <label htmlFor="max-colors">
+                  Max colors
+                  <span className="setting-hint">palette size — similar shades merge</span>
+                </label>
+                <div className="setting-controls">
+                  <input
+                    id="max-colors"
+                    type="range"
+                    min="2"
+                    max="16"
+                    value={settings.maxColors}
+                    onChange={(e) => set({ maxColors: Number(e.target.value) })}
+                  />
+                  <span className="setting-value">{settings.maxColors}</span>
+                </div>
+              </div>
+
+              <div className="setting-row">
+                <label htmlFor="remove-background">
+                  Remove background
+                  <span className="setting-hint">
+                    drops transparent areas / the border color
+                  </span>
+                </label>
+                <div className="setting-controls">
+                  <label className="checkbox">
+                    <input
+                      id="remove-background"
+                      type="checkbox"
+                      checked={settings.removeBackground}
+                      onChange={(e) => set({ removeBackground: e.target.checked })}
+                    />
+                    Remove
+                  </label>
+                </div>
+              </div>
+            </>
+          )}
+
+          {settings.colorMode === 'mono' && (
+            <div className="setting-row">
+              <label htmlFor="auto-threshold">
+                Threshold
+                <span className="setting-hint">auto = Otsu&rsquo;s method</span>
+              </label>
+              <div className="setting-controls">
+                <label className="checkbox">
+                  <input
+                    id="auto-threshold"
+                    type="checkbox"
+                    checked={settings.autoThreshold}
+                    onChange={(e) => set({ autoThreshold: e.target.checked })}
+                  />
+                  Auto
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="255"
+                  value={settings.threshold}
+                  disabled={settings.autoThreshold}
+                  onChange={(e) => set({ threshold: Number(e.target.value) })}
+                />
+                <span className="setting-value">
+                  {settings.autoThreshold ? 'auto' : settings.threshold}
+                </span>
+              </div>
+            </div>
+          )}
 
           <div className="setting-row">
             <label htmlFor="turd-size">
@@ -263,46 +324,51 @@ export default function ImportPage({
             </div>
           </div>
 
-          <div className="setting-row">
-            <label htmlFor="colors-as-dark">
-              Colored pixels
-              <span className="setting-hint">count saturated colors as part of the shape</span>
-            </label>
-            <div className="setting-controls">
-              <label className="checkbox">
-                <input
-                  id="colors-as-dark"
-                  type="checkbox"
-                  checked={settings.colorsAsDark}
-                  onChange={(e) => set({ colorsAsDark: e.target.checked })}
-                />
-                Treat as solid
-              </label>
-            </div>
-          </div>
+          {settings.colorMode === 'mono' && (
+            <>
+              <div className="setting-row">
+                <label htmlFor="colors-as-dark">
+                  Colored pixels
+                  <span className="setting-hint">count saturated colors as part of the shape</span>
+                </label>
+                <div className="setting-controls">
+                  <label className="checkbox">
+                    <input
+                      id="colors-as-dark"
+                      type="checkbox"
+                      checked={settings.colorsAsDark}
+                      onChange={(e) => set({ colorsAsDark: e.target.checked })}
+                    />
+                    Treat as solid
+                  </label>
+                </div>
+              </div>
 
-          <div className="setting-row">
-            <label htmlFor="invert">
-              Invert colors
-              <span className="setting-hint">for white shapes on dark backgrounds</span>
-            </label>
-            <div className="setting-controls">
-              <label className="checkbox">
-                <input
-                  id="invert"
-                  type="checkbox"
-                  checked={settings.invert}
-                  onChange={(e) => set({ invert: e.target.checked })}
-                />
-                Invert
-              </label>
-            </div>
-          </div>
+              <div className="setting-row">
+                <label htmlFor="invert">
+                  Invert colors
+                  <span className="setting-hint">for white shapes on dark backgrounds</span>
+                </label>
+                <div className="setting-controls">
+                  <label className="checkbox">
+                    <input
+                      id="invert"
+                      type="checkbox"
+                      checked={settings.invert}
+                      onChange={(e) => set({ invert: e.target.checked })}
+                    />
+                    Invert
+                  </label>
+                </div>
+              </div>
+            </>
+          )}
 
           {source?.type === 'svg' && (
             <p className="setting-note">
               Trace settings don&rsquo;t apply to SVG input &mdash; the file goes straight
-              through cleanup &amp; validation.
+              through cleanup &amp; validation. Color mode still applies: &ldquo;Keep
+              colors&rdquo; preserves the file&rsquo;s fills.
             </p>
           )}
         </div>

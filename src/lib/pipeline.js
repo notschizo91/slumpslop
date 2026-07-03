@@ -1,12 +1,22 @@
 // End-to-end conversion pipeline.
 //
-// Raster:  decode → binarize (Otsu/manual, invert) → potrace → validate →
-//          scale to real-world units → final SVG.
-// SVG in:  parse → shapes-to-paths + flatten transforms → validate →
-//          scale to real-world units → final SVG.
+// Raster (keep colors):  decode → palette quantization (median cut, AA-safe
+//   merge, background removal) → potrace once per color mask → validate →
+//   scale to real-world units → final SVG with per-color fills.
+// Raster (silhouette):   decode → binarize (Otsu/manual, invert) → potrace →
+//   validate → scale → single-color SVG.
+// SVG in:  parse → shapes-to-paths + flatten transforms (fills preserved) →
+//   validate → scale → final SVG.
+//
+// Paths travel through the pipeline as { segments, fill, stroke?, strokeWidth? }.
 
 import { init, potrace } from 'esm-potrace-wasm';
-import { imageToImageData, binarize } from './preprocess.js';
+import {
+  imageToImageData,
+  binarize,
+  quantizeColors,
+  paletteMask,
+} from './preprocess.js';
 import { flattenSvg } from './flatten.js';
 import {
   normalizePath,
@@ -22,7 +32,7 @@ import { ensureClosed, selfIntersects, dedupePaths } from './validate.js';
 
 let potraceReady = null;
 
-async function traceToPathSegments(binaryImageData, settings) {
+async function traceToSegmentLists(binaryImageData, settings) {
   if (!potraceReady) potraceReady = init();
   await potraceReady;
 
@@ -40,7 +50,7 @@ async function traceToPathSegments(binaryImageData, settings) {
 
   const doc = new DOMParser().parseFromString(svgString, 'image/svg+xml');
   if (doc.querySelector('parsererror')) throw new Error('Tracer returned invalid SVG');
-  const paths = [];
+  const lists = [];
   for (const el of doc.querySelectorAll('path')) {
     const d = el.getAttribute('d');
     if (!d) continue;
@@ -53,12 +63,12 @@ async function traceToPathSegments(binaryImageData, settings) {
     }
     let segments = normalizePath(d);
     if (m !== IDENTITY) segments = transformSegments(segments, m);
-    paths.push(segments);
+    lists.push(segments);
   }
-  return paths;
+  return lists;
 }
 
-function buildOutputSvg(pathSegmentLists, { contentBox, targetWidth, targetHeight, unit }) {
+function buildOutputSvg(paths, { contentBox, targetWidth, targetHeight, unit }) {
   const sx = targetWidth / contentBox.width;
   const sy = targetHeight / contentBox.height;
   // Bake real-world units into coordinates: 1 user unit == 1 mm (or 1 in),
@@ -66,9 +76,16 @@ function buildOutputSvg(pathSegmentLists, { contentBox, targetWidth, targetHeigh
   const m = [sx, 0, 0, sy, -contentBox.minX * sx, -contentBox.minY * sy];
 
   const precision = unit === 'in' ? 5 : 4;
-  const pathEls = pathSegmentLists.map((segments) => {
-    const d = serializeSegments(transformSegments(segments, m), precision);
-    return `  <path d="${d}" fill="#000000" stroke="none"/>`;
+  const pathEls = paths.map((path) => {
+    const d = serializeSegments(transformSegments(path.segments, m), precision);
+    let attrs = `d="${d}" fill="${path.fill}"`;
+    if (path.stroke && path.stroke !== 'none') {
+      const w = (path.strokeWidth ?? 1) * ((sx + sy) / 2);
+      attrs += ` stroke="${path.stroke}" stroke-width="${Number(w.toFixed(4))}"`;
+    } else {
+      attrs += ' stroke="none"';
+    }
+    return `  <path ${attrs}/>`;
   });
 
   const w = Number(targetWidth.toFixed(4));
@@ -82,60 +99,84 @@ function buildOutputSvg(pathSegmentLists, { contentBox, targetWidth, targetHeigh
 
 function validateAndClean(rawPaths) {
   let autoClosed = 0;
-  const closed = rawPaths.map((segments) => {
-    const r = ensureClosed(segments);
+  const closed = rawPaths.map((path) => {
+    const r = ensureClosed(path.segments);
     autoClosed += r.autoClosed;
-    return r.segments;
+    return { ...path, segments: r.segments };
   });
 
   const { paths, duplicatesRemoved, degenerateRemoved } = dedupePaths(closed);
 
   let selfIntersecting = 0;
-  for (const segments of paths) {
-    if (selfIntersects(segments)) selfIntersecting++;
+  for (const path of paths) {
+    if (selfIntersects(path.segments)) selfIntersecting++;
   }
 
   return { paths, autoClosed, duplicatesRemoved, degenerateRemoved, selfIntersecting };
 }
 
 // `source`: { kind: 'raster', image } or { kind: 'svg', svgText }
-// `settings`: { threshold, invert, colorsAsDark, turdSize, alphaMax,
+// `settings`: { colorMode: 'color'|'mono', maxColors, removeBackground,
+//               threshold, invert, colorsAsDark, turdSize, alphaMax,
 //               optTolerance, targetWidth, targetHeight, unit }
 export async function convert(source, settings) {
   const warnings = [];
-  let rawPaths;
+  let rawPaths = [];
   let contentBox;
   let usedThreshold = null;
+  let colors = null;
+  let backgroundHex = null;
 
   if (source.kind === 'raster') {
     const { imageData, downscaled } = imageToImageData(source.image);
     if (downscaled) {
       warnings.push('Image was downscaled to 4096px max dimension before tracing');
     }
-    const bin = binarize(imageData, {
-      threshold: settings.threshold,
-      invert: settings.invert,
-      colorsAsDark: settings.colorsAsDark,
-    });
-    usedThreshold = bin.threshold;
-    rawPaths = await traceToPathSegments(bin.imageData, settings);
-    contentBox = {
-      minX: 0,
-      minY: 0,
-      width: bin.imageData.width,
-      height: bin.imageData.height,
-    };
+    contentBox = { minX: 0, minY: 0, width: imageData.width, height: imageData.height };
+
+    if (settings.colorMode === 'color') {
+      const q = quantizeColors(imageData, {
+        maxColors: settings.maxColors,
+        removeBackground: settings.removeBackground,
+      });
+      backgroundHex = q.backgroundHex;
+      colors = [];
+      for (let i = 0; i < q.palette.length; i++) {
+        const mask = paletteMask(q.assign, i, imageData.width, imageData.height);
+        const lists = await traceToSegmentLists(mask, settings);
+        if (lists.length === 0) continue;
+        colors.push(q.palette[i].hex);
+        for (const segments of lists) {
+          rawPaths.push({ segments, fill: q.palette[i].hex });
+        }
+      }
+    } else {
+      const bin = binarize(imageData, {
+        threshold: settings.threshold,
+        invert: settings.invert,
+        colorsAsDark: settings.colorsAsDark,
+      });
+      usedThreshold = bin.threshold;
+      const lists = await traceToSegmentLists(bin.imageData, settings);
+      rawPaths = lists.map((segments) => ({ segments, fill: '#000000' }));
+    }
   } else {
     const flat = flattenSvg(source.svgText);
     warnings.push(...flat.warnings);
-    rawPaths = flat.paths;
+    rawPaths =
+      settings.colorMode === 'color'
+        ? flat.paths
+        : flat.paths.map((p) => ({ segments: p.segments, fill: '#000000' }));
+    if (settings.colorMode === 'color') {
+      colors = [...new Set(rawPaths.map((p) => p.fill))];
+    }
     if (flat.viewBox) {
       contentBox = flat.viewBox;
     } else {
       // No viewBox: fit the output to the geometry itself.
       let box = null;
-      for (const segments of rawPaths) {
-        const b = segmentsBBox(segments);
+      for (const path of rawPaths) {
+        const b = segmentsBBox(path.segments);
         if (!b) continue;
         box = box
           ? {
@@ -170,7 +211,7 @@ export async function convert(source, settings) {
     unit: settings.unit,
   });
 
-  const nodeCount = cleaned.paths.reduce((sum, segments) => sum + countNodes(segments), 0);
+  const nodeCount = cleaned.paths.reduce((sum, p) => sum + countNodes(p.segments), 0);
 
   return {
     svgText,
@@ -182,6 +223,8 @@ export async function convert(source, settings) {
       degenerateRemoved: cleaned.degenerateRemoved,
       selfIntersecting: cleaned.selfIntersecting,
       usedThreshold,
+      colors,
+      backgroundHex,
       warnings,
       bytes: new Blob([svgText]).size,
       targetWidth: settings.targetWidth,

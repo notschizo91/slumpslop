@@ -18,16 +18,29 @@ server, no accounts, no uploads leave the machine.
    original, and a download button. "Adjust settings" returns to page 1 with
    the file and settings retained.
 
+## Color modes
+
+- **Keep colors** (default) — the image is quantized to a small palette
+  (median cut over an edge-pixel-filtered histogram, so anti-aliased blends
+  never become phantom colors; near-identical shades merge). Each palette
+  color is traced separately and emitted as its own paths with that color as
+  the fill. Transparent areas — or, for opaque images, the color dominating
+  the border — are treated as background and removed (toggleable). Uploaded
+  SVGs keep their fills (inherited group fills, `style` attributes, and
+  presentation attributes all resolve; gradients fall back to black with a
+  warning).
+- **Single-color silhouette** — classic CAD profile mode: everything dark
+  *or saturated* traces as one black shape. Threshold (Otsu auto or manual),
+  invert, and the "colored pixels count as solid" toggle apply here.
+
 ## Processing pipeline
 
-1. **Preprocess** — grayscale (alpha composited over white), threshold via
-   Otsu's method or a manual slider, optional invert. Saturated colors (green,
-   red, yellow, …) count as part of the shape by default — plain luminance
-   thresholding would punch bright colors out as holes; a "Colored pixels"
-   toggle restores luminance-only behavior.
+1. **Preprocess** — alpha composited over white, then either palette
+   quantization (color mode) or grayscale + threshold (silhouette mode).
 2. **Trace** — [Potrace](https://potrace.sourceforge.net/) via
-   [`esm-potrace-wasm`](https://github.com/tomayac/esm-potrace-wasm), with the
-   group transform in its output baked into the path coordinates.
+   [`esm-potrace-wasm`](https://github.com/tomayac/esm-potrace-wasm), run once
+   per palette color in color mode, with the group transform in its output
+   baked into the path coordinates.
 3. **Validate & clean** — every subpath is explicitly closed (open subpaths
    are auto-closed and reported), self-intersecting paths are detected via a
    flattened segment sweep and flagged, exact duplicates and degenerate paths
@@ -52,7 +65,6 @@ npm run build    # production build to dist/
 
 ## Out of scope (v1)
 
-- Multi-color tracing — single-color/silhouette CAD profiles only
 - Accounts, history, cloud storage
 - Batch processing
 - `<use>`, `<image>` and `<text>` elements in uploaded SVGs (skipped with a warning)

@@ -124,18 +124,26 @@ test('selfIntersects detects a bowtie and passes a square', () => {
   assert.equal(selfIntersects(crossing), true);
 });
 
-test('dedupePaths removes duplicates and degenerates', () => {
+test('dedupePaths removes duplicates and degenerates, keyed by geometry + paint', () => {
   const square = normalizePath('M0 0 L10 0 L10 10 L0 10 Z');
   const square2 = normalizePath('M0 0 L10 0 L10 10 L0 10 Z');
   const dot = normalizePath('M5 5 Z');
   const { paths, duplicatesRemoved, degenerateRemoved } = dedupePaths([
-    square,
-    square2,
-    dot,
+    { segments: square, fill: '#000000' },
+    { segments: square2, fill: '#000000' },
+    { segments: dot, fill: '#000000' },
   ]);
   assert.equal(paths.length, 1);
   assert.equal(duplicatesRemoved, 1);
   assert.equal(degenerateRemoved, 1);
+
+  // Same geometry, different color → both kept.
+  const twoColors = dedupePaths([
+    { segments: square, fill: '#000000' },
+    { segments: square2, fill: '#2ee88f' },
+  ]);
+  assert.equal(twoColors.paths.length, 2);
+  assert.equal(twoColors.duplicatesRemoved, 0);
 });
 
 test('countNodes counts anchor commands', () => {

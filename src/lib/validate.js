@@ -126,26 +126,27 @@ export function selfIntersects(segments) {
   return false;
 }
 
-// Remove exact duplicates (same serialized geometry) and degenerate paths
-// (fewer than 3 anchor points). Returns { paths, duplicatesRemoved, degenerateRemoved }.
-export function dedupePaths(pathSegmentLists) {
+// Remove exact duplicates (same serialized geometry AND same paint) and
+// degenerate paths (fewer than 3 anchor points). Takes and returns path
+// objects ({ segments, fill, ... }).
+export function dedupePaths(pathObjects) {
   const seen = new Set();
   const paths = [];
   let duplicatesRemoved = 0;
   let degenerateRemoved = 0;
-  for (const segments of pathSegmentLists) {
-    const anchors = segments.filter((s) => s[0] !== 'Z').length;
+  for (const path of pathObjects) {
+    const anchors = path.segments.filter((s) => s[0] !== 'Z').length;
     if (anchors < 3) {
       degenerateRemoved++;
       continue;
     }
-    const key = serializeSegments(segments, 3);
+    const key = `${path.fill}|${path.stroke ?? ''}|${serializeSegments(path.segments, 3)}`;
     if (seen.has(key)) {
       duplicatesRemoved++;
       continue;
     }
     seen.add(key);
-    paths.push(segments);
+    paths.push(path);
   }
   return { paths, duplicatesRemoved, degenerateRemoved };
 }
